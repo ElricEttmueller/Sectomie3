@@ -1,0 +1,50 @@
+/* Tailwind-inspired utility classes */
+
+/* Base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Utility classes */
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.text-center {
+  text-align: center;
+}
+
+/* Custom colors */
+.text-cultivation-gold {
+  color: #d4af37;
+}
+
+.bg-cultivation-brown {
+  background-color: #8b4513;
+}
+
+.text-scroll-bg {
+  color: #fff8dc;
+}
