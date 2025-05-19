@@ -1,3 +1,5 @@
+const webpack = require('webpack');
+
 module.exports = {
   lintOnSave: false,
   devServer: {
@@ -9,8 +11,10 @@ module.exports = {
     }
   },
   configureWebpack: {
-    define: {
-      __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false'
-    }
+    plugins: [
+      new webpack.DefinePlugin({
+        __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: JSON.stringify(false)
+      })
+    ]
   }
 }

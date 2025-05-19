@@ -42,11 +42,54 @@
         
         <div class="cultivation-actions">
           <h2 class="section-title">Cultivation</h2>
+          
+          <!-- Bottleneck Status -->
+          <div v-if="disciple.bottleneck !== 'none'" class="bottleneck-status">
+            <div class="bottleneck-header">
+              <span class="bottleneck-icon" v-if="disciple.bottleneck === 'minor'">🔄</span>
+              <span class="bottleneck-icon" v-else>⚠️</span>
+              <span class="bottleneck-type">{{ disciple.bottleneck === 'minor' ? 'Minor' : 'Major' }} Bottleneck</span>
+            </div>
+            
+            <div class="bottleneck-description" v-if="disciple.bottleneck === 'minor'">
+              This disciple has encountered a minor cultivation bottleneck. They need insights to advance further.
+              <div class="insight-progress">
+                <span>Insights: {{ disciple.bottleneck_insights }} / {{ disciple.insights_required }}</span>
+                <div class="insight-bar">
+                  <div class="insight-fill" :style="{ width: `${(disciple.bottleneck_insights / disciple.insights_required) * 100}%` }"></div>
+                </div>
+              </div>
+              <button class="action-button bottleneck-action" @click="meditateForInsight">Meditate for Insight</button>
+            </div>
+            
+            <div class="bottleneck-description" v-else>
+              This disciple has encountered a major cultivation bottleneck. They need special treasures to overcome this barrier.
+              <div class="treasure-options">
+                <button 
+                  v-for="(count, treasure) in sectTreasures" 
+                  :key="treasure" 
+                  class="treasure-button" 
+                  :class="{ 'disabled': count <= 0 }"
+                  :disabled="count <= 0"
+                  @click="useTreasure(treasure)"
+                >
+                  {{ formatTreasureName(treasure) }} ({{ count }})
+                </button>
+              </div>
+            </div>
+          </div>
+          
           <div class="action-buttons">
             <button class="action-button" @click="navigateToCultivation">Enter Cultivation Chamber</button>
-            <button class="action-button" @click="attemptBreakthrough">Attempt Breakthrough</button>
+            <button 
+              class="action-button" 
+              @click="attemptBreakthrough"
+              :disabled="disciple.bottleneck !== 'none'"
+            >
+              Attempt Breakthrough
+            </button>
           </div>
-          <div v-if="actionMessage" class="action-message">{{ actionMessage }}</div>
+          <div v-if="actionMessage" class="action-message" :class="{ 'success': actionSuccess, 'error': !actionSuccess }">{{ actionMessage }}</div>
         </div>
         
         <div class="disciple-techniques">
@@ -83,11 +126,15 @@ export default {
       disciple: {},
       loading: true,
       error: null,
-      actionMessage: null
+      actionMessage: null,
+      actionSuccess: false,
+      sectTreasures: {},
+      playerSect: {}
     }
   },
   mounted() {
     this.fetchDiscipleDetails();
+    this.fetchPlayerSect();
   },
   methods: {
     async fetchDiscipleDetails() {
@@ -113,27 +160,122 @@ export default {
     async attemptBreakthrough() {
       try {
         const response = await axios.post(`http://localhost:5000/api/disciples/${this.id}/breakthrough`);
-        const { success, realm, stage, qi, max_qi } = response.data;
         
-        if (success) {
-          this.actionMessage = `Breakthrough successful! Advanced to ${stage} ${realm}!`;
-        } else {
-          this.actionMessage = `Breakthrough failed. Current realm: ${stage} ${realm}`;
+        // Update the action message from the response
+        this.actionMessage = response.data.message;
+        this.actionSuccess = response.data.success;
+        
+        // Check if a bottleneck was encountered
+        if (response.data.bottleneck !== 'none') {
+          // Update disciple bottleneck data
+          this.disciple.bottleneck = response.data.bottleneck;
+          this.disciple.bottleneck_insights = 0;
+          this.disciple.insights_required = response.data.insights_required || 0;
         }
         
         // Update disciple data
-        this.disciple.realm_name = realm;
-        this.disciple.stage_name = stage;
-        this.disciple.qi = qi;
-        this.disciple.max_qi = max_qi;
+        if (response.data.realm_name) {
+          this.disciple.realm_name = response.data.realm_name;
+        }
+        if (response.data.stage) {
+          this.disciple.stage_name = response.data.stage;
+        }
+        if (response.data.qi) {
+          this.disciple.qi = response.data.qi;
+        }
+        if (response.data.max_qi) {
+          this.disciple.max_qi = response.data.max_qi;
+        }
         
         // Refresh disciple details to get updated combat power
         this.fetchDiscipleDetails();
       } catch (err) {
         this.actionMessage = 'Failed to attempt breakthrough. Your dao heart is unstable.';
+        this.actionSuccess = false;
         console.error(err);
       }
     },
+    async fetchPlayerSect() {
+      try {
+        const response = await axios.get('http://localhost:5000/api/player-sect');
+        this.playerSect = response.data;
+        
+        // Get treasures if available
+        if (response.data.treasures) {
+          this.sectTreasures = response.data.treasures;
+        }
+      } catch (err) {
+        console.error('Failed to load player sect data:', err);
+      }
+    },
+    
+    async meditateForInsight() {
+      try {
+        const response = await axios.post(`http://localhost:5000/api/disciples/${this.id}/meditate`);
+        
+        // Update disciple data with the response
+        if (response.data.disciple) {
+          this.disciple.bottleneck = response.data.disciple.bottleneck;
+          this.disciple.bottleneck_insights = response.data.disciple.bottleneck_insights;
+          this.disciple.insights_required = response.data.disciple.insights_required;
+          this.disciple.breakthrough_chance = response.data.disciple.breakthrough_chance;
+        }
+        
+        // Set action message
+        this.actionMessage = response.data.message;
+        this.actionSuccess = response.data.success;
+        
+        // If bottleneck is overcome, refresh disciple details
+        if (response.data.bottleneck_overcome) {
+          this.fetchDiscipleDetails();
+        }
+      } catch (err) {
+        this.actionMessage = 'Failed to meditate. Your mind is too restless.';
+        this.actionSuccess = false;
+        console.error(err);
+      }
+    },
+    
+    async useTreasure(treasureType) {
+      try {
+        const response = await axios.post(`http://localhost:5000/api/disciples/${this.id}/use-treasure`, {
+          treasure_type: treasureType
+        });
+        
+        // Update disciple data with the response
+        if (response.data.disciple) {
+          this.disciple.bottleneck = response.data.disciple.bottleneck;
+          this.disciple.breakthrough_chance = response.data.disciple.breakthrough_chance;
+        }
+        
+        // Update sect treasures
+        if (response.data.treasures) {
+          this.sectTreasures = response.data.treasures;
+        }
+        
+        // Set action message
+        this.actionMessage = response.data.message;
+        this.actionSuccess = response.data.success;
+        
+        // If bottleneck is overcome, refresh disciple details
+        if (response.data.bottleneck_overcome) {
+          this.fetchDiscipleDetails();
+        }
+      } catch (err) {
+        this.actionMessage = 'Failed to use treasure. The treasure was not compatible with your cultivation base.';
+        this.actionSuccess = false;
+        console.error(err);
+      }
+    },
+    
+    formatTreasureName(treasureType) {
+      // Convert snake_case to Title Case with spaces
+      return treasureType
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    },
+    
     formatNumber(num) {
       return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     }
@@ -290,7 +432,101 @@ export default {
   text-align: center;
   margin-top: 0.5rem;
   font-size: 0.9rem;
-  color: #8b4513;
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+}
+
+.action-message.success {
+  background-color: rgba(76, 175, 80, 0.2);
+  border: 1px solid rgba(76, 175, 80, 0.5);
+  color: #2e7d32;
+}
+
+.action-message.error {
+  background-color: rgba(244, 67, 54, 0.2);
+  border: 1px solid rgba(244, 67, 54, 0.5);
+  color: #c62828;
+}
+
+.bottleneck-status {
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background-color: rgba(255, 235, 205, 0.7);
+  border: 1px solid #d4af37;
+}
+
+.bottleneck-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.bottleneck-icon {
+  margin-right: 0.5rem;
+  font-size: 1.2rem;
+}
+
+.bottleneck-type {
+  color: #8B4513;
+}
+
+.bottleneck-description {
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.insight-progress {
+  margin: 0.75rem 0;
+}
+
+.insight-bar {
+  height: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 0.25rem;
+  margin-top: 0.25rem;
+  overflow: hidden;
+}
+
+.insight-fill {
+  height: 100%;
+  background-color: #4CAF50;
+  border-radius: 0.25rem;
+  transition: width 0.3s ease;
+}
+
+.bottleneck-action {
+  margin-top: 0.5rem;
+  background-color: rgba(212, 175, 55, 0.7);
+}
+
+.treasure-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.treasure-button {
+  padding: 0.5rem 0.75rem;
+  background-color: rgba(212, 175, 55, 0.7);
+  border: 1px solid #d4af37;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+  color: #8B4513;
+}
+
+.treasure-button:hover {
+  background-color: rgba(212, 175, 55, 0.9);
+}
+
+.treasure-button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .technique-list {
