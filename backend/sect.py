@@ -32,6 +32,15 @@ class Sect:
         self.spirit_herbs = 2 * tier  # Basic cultivation herbs
         self.dao_crystals = 0  # Rare dao energy crystals
         
+        # Bottleneck treasures
+        self.treasures = {
+            "spirit_pill": tier,  # Basic treasure for early realms
+            "dao_comprehension_stone": max(0, tier - 2),  # Mid-tier treasure
+            "heaven_and_earth_spirit_fruit": max(0, tier - 4),  # High-tier treasure
+            "nine_transformation_pill": max(0, tier - 6),  # Very rare treasure
+            "immortal_ascension_stone": max(0, tier - 8)  # Legendary treasure
+        }
+        
         # Sect properties
         self.sect_influence = 10 * tier   # Influence in the cultivation world
         self.reputation = 50          # Neutral starting reputation (0-100)
@@ -133,6 +142,7 @@ class Sect:
             "elixir_fields": self.elixir_fields,
             "spirit_herbs": getattr(self, 'spirit_herbs', 0),
             "dao_crystals": getattr(self, 'dao_crystals', 0),
+            "treasures": getattr(self, 'treasures', {}),
             "sect_influence": self.sect_influence,
             "reputation": self.reputation,
             "territories": self.territories,
@@ -162,6 +172,21 @@ class Sect:
         sect.elixir_fields = data["elixir_fields"]
         sect.spirit_herbs = data.get("spirit_herbs", 2 * data["tier"])
         sect.dao_crystals = data.get("dao_crystals", 0)
+        
+        # Load treasures or initialize with defaults based on tier
+        if "treasures" in data:
+            sect.treasures = data["treasures"]
+        else:
+            # Initialize with default treasures based on tier
+            tier = data["tier"]
+            sect.treasures = {
+                "spirit_pill": tier,
+                "dao_comprehension_stone": max(0, tier - 2),
+                "heaven_and_earth_spirit_fruit": max(0, tier - 4),
+                "nine_transformation_pill": max(0, tier - 6),
+                "immortal_ascension_stone": max(0, tier - 8)
+            }
+        
         sect.sect_influence = data["sect_influence"]
         sect.reputation = data["reputation"]
         sect.territories = data["territories"]

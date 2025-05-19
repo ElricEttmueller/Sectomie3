@@ -451,19 +451,80 @@ def breakthrough(disciple_id):
         return jsonify({'error': 'Disciple not found'}), 404
     
     member = members[disciple_id]
-    success, new_realm, new_stage = member.attempt_breakthrough()
+    results = member.attempt_breakthrough()
     
     # Save the updated data
     data_manager.save_data(sects, members, "example_data.json")
     
-    return jsonify({
-        'success': success,
-        'realm': member.get_realm_name(),
-        'stage': member.get_stage_name(),
-        'qi': member.qi,
-        'max_qi': member.max_qi,
+    return jsonify(results)
+
+@app.route('/api/disciples/<int:disciple_id>/meditate', methods=['POST'])
+def meditate_for_insight(disciple_id):
+    """Meditate to gain insights for overcoming minor bottlenecks"""
+    if disciple_id < 0 or disciple_id >= len(members):
+        return jsonify({'error': 'Disciple not found'}), 404
+    
+    member = members[disciple_id]
+    results = member.meditate_for_insight()
+    
+    # Add disciple current stats to results
+    results['disciple'] = {
+        'bottleneck': member.bottleneck,
+        'bottleneck_insights': member.bottleneck_insights,
+        'insights_required': member.insights_required,
         'breakthrough_chance': member.breakthrough_chance
-    })
+    }
+    
+    # Save the updated data
+    data_manager.save_data(sects, members, "example_data.json")
+    
+    return jsonify(results)
+
+@app.route('/api/disciples/<int:disciple_id>/use-treasure', methods=['POST'])
+def use_treasure(disciple_id):
+    """Use a treasure to overcome a major bottleneck"""
+    if disciple_id < 0 or disciple_id >= len(members):
+        return jsonify({'error': 'Disciple not found'}), 404
+    
+    data = request.get_json()
+    if data is None:
+        data = {}
+    treasure_type = data.get('treasure_type', '')
+    
+    # Get the player sect
+    sect = sects[game_state.sect_id]
+    member = members[disciple_id]
+    
+    # Check if sect has the treasure
+    if not hasattr(sect, 'treasures'):
+        sect.treasures = {}
+    
+    if treasure_type not in sect.treasures or sect.treasures.get(treasure_type, 0) <= 0:
+        return jsonify({
+            'success': False,
+            'message': f'Your sect does not possess any {treasure_type.replace("_", " ")}.',
+        }), 400
+    
+    # Use the treasure
+    results = member.use_treasure_for_bottleneck(treasure_type)
+    
+    # If successful, consume the treasure
+    if results['success']:
+        sect.treasures[treasure_type] -= 1
+    
+    # Add disciple current stats to results
+    results['disciple'] = {
+        'bottleneck': member.bottleneck,
+        'breakthrough_chance': member.breakthrough_chance
+    }
+    
+    # Add sect treasures to results
+    results['treasures'] = sect.treasures
+    
+    # Save the updated data
+    data_manager.save_data(sects, members, "example_data.json")
+    
+    return jsonify(results)
 
 # Keep the original endpoint for backward compatibility
 @app.route('/api/sects/<int:sect_id>/collect-resources', methods=['POST'])
