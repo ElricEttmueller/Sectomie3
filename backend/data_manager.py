@@ -8,6 +8,7 @@ import os
 from member import Member
 from sect import Sect
 
+
 class DataManager:
     """
     Handles data persistence for the Sectomie system

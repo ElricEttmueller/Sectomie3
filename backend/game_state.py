@@ -36,7 +36,9 @@ class GameState:
             "resource_income": {},
             "cultivation_progress": {},
             "events": [],
-            "new_missions": []
+            "new_missions": [],
+            "cultivation_deviations": [],
+            "attribute_increases": []
         }
         
         # Get player sect
@@ -66,31 +68,81 @@ class GameState:
         
         # Process automatic cultivation for disciples
         for member in player_sect.members:
-            # Basic passive cultivation (20% of normal cultivation)
-            # We'll use the cultivate method but only apply 20% of the effect
-            original_qi = member.qi
-            original_breakthrough = member.breakthrough_chance
-            
-            # Temporarily store values
-            member.cultivate(hours=24 * 0.2 * self.turn_length)
-            
-            # Calculate how much was gained
-            qi_gained = member.qi - original_qi
-            
-            # Reset breakthrough chance to avoid double-counting
-            member.breakthrough_chance = original_breakthrough + ((member.breakthrough_chance - original_breakthrough) * 0.2)
+            # Skip disciples that are not active or are in seclusion
+            if hasattr(member, 'status') and member.status not in ['active', None]:
+                continue
                 
-            # Update breakthrough chance
-            if member.qi >= member.max_qi:
-                member.breakthrough_chance += 5  # Small passive increase in breakthrough chance
+            # Get assigned cultivation method (default to qi_circulation if none assigned)
+            assigned_method = getattr(member, 'assigned_cultivation_method', 'qi_circulation')
+            
+            # Calculate facility bonus based on sect buildings
+            facility_bonus = 1.0
+            if hasattr(player_sect, 'cultivation_chambers') and player_sect.cultivation_chambers > 0:
+                facility_bonus += player_sect.cultivation_chambers * 0.05  # 5% bonus per chamber
                 
+            # Calculate manual bonus based on sect technique manuals
+            manual_bonus = 1.0
+            if hasattr(player_sect, 'technique_manuals') and player_sect.technique_manuals:
+                # Check if there's a manual for this specific method
+                for manual in player_sect.technique_manuals:
+                    if manual.get('method') == assigned_method:
+                        manual_bonus += manual.get('bonus', 0.1)  # Default 10% bonus per manual
+            
+            # Calculate resource bonus based on allocated resources
+            resource_bonus = 1.0
+            if hasattr(member, 'allocated_resources'):
+                resource_bonus += member.allocated_resources * 0.1  # 10% bonus per resource point
+            
+            # Apply monthly cultivation with all bonuses
+            cultivation_result = member.calculate_monthly_cultivation(
+                assigned_method=assigned_method,
+                facility_bonus=facility_bonus,
+                manual_bonus=manual_bonus,
+                resource_bonus=resource_bonus
+            )
+            
+            # Record cultivation progress
             results["cultivation_progress"][members.index(member)] = {
                 "name": member.name,
-                "qi_gained": qi_gained,
+                "qi_gained": cultivation_result["qi_gained"],
                 "current_qi": member.qi,
                 "max_qi": member.max_qi,
-                "breakthrough_chance": member.breakthrough_chance
+                "breakthrough_chance": member.breakthrough_chance,
+                "method_used": assigned_method,
+                "method_description": cultivation_result.get("method_description", "")
             }
+            
+            # Record cultivation deviations
+            if cultivation_result["cultivation_deviation"]:
+                results["cultivation_deviations"].append({
+                    "disciple_id": members.index(member),
+                    "name": member.name,
+                    "message": cultivation_result["message"]
+                })
+                
+            # Record attribute increases
+            if cultivation_result["attribute_increase"]:
+                results["attribute_increases"].append({
+                    "disciple_id": members.index(member),
+                    "name": member.name,
+                    "attribute": cultivation_result["attribute_increase"],
+                    "value": cultivation_result["attribute_value"]
+                })
+                
+            # Check for automatic breakthrough attempts
+            if member.qi >= member.max_qi and member.bottleneck == "none":
+                # 10% chance to automatically attempt breakthrough when qi is full
+                if random.random() < 0.1:
+                    breakthrough_result = member.attempt_breakthrough()
+                    if breakthrough_result["success"]:
+                        results["events"].append({
+                            "type": "breakthrough",
+                            "disciple_id": members.index(member),
+                            "name": member.name,
+                            "message": breakthrough_result["message"],
+                            "new_realm": member.realm,
+                            "new_stage": member.stage
+                        })
         
         # Generate new missions/opportunities (placeholder)
         # TODO: Implement mission generation

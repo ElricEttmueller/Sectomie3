@@ -44,7 +44,7 @@
                   <div class="disciple-power">Power: {{ formatNumber(disciple.combat_power) }}</div>
                 </div>
                 <div class="card-actions">
-                  <button class="action-button" @click.stop="navigateToCultivation(disciple.id)">Cultivate</button>
+                  <button class="action-button" @click.stop="assignCultivationMethod(disciple.id)">Assign Cultivation</button>
                 </div>
               </div>
             </div>
@@ -237,8 +237,8 @@ export default {
     viewDisciple(id) {
       this.$router.push(`/dashboard/disciples/${id}`);
     },
-    navigateToCultivation(id) {
-      this.$router.push(`/dashboard/cultivation/${id}`);
+    assignCultivationMethod(id) {
+      this.$router.push(`/dashboard/disciples/${id}?showCultivationAssignment=true`);
     },
     formatNumber(num) {
       return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");

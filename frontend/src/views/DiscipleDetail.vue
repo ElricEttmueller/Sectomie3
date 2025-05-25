@@ -43,28 +43,16 @@
         <div class="cultivation-actions">
           <h2 class="section-title">Cultivation</h2>
           
-          <!-- Bottleneck Status -->
-          <div v-if="disciple.bottleneck !== 'none'" class="bottleneck-status">
-            <div class="bottleneck-header">
-              <span class="bottleneck-icon" v-if="disciple.bottleneck === 'minor'">🔄</span>
-              <span class="bottleneck-icon" v-else>⚠️</span>
-              <span class="bottleneck-type">{{ disciple.bottleneck === 'minor' ? 'Minor' : 'Major' }} Bottleneck</span>
-            </div>
-            
-            <div class="bottleneck-description" v-if="disciple.bottleneck === 'minor'">
-              This disciple has encountered a minor cultivation bottleneck. They need insights to advance further.
-              <div class="insight-progress">
-                <span>Insights: {{ disciple.bottleneck_insights }} / {{ disciple.insights_required }}</span>
-                <div class="insight-bar">
-                  <div class="insight-fill" :style="{ width: `${(disciple.bottleneck_insights / disciple.insights_required) * 100}%` }"></div>
-                </div>
+          <!-- Bottleneck Visualizer Component -->
+          <bottleneck-visualizer :disciple="disciple">
+            <template v-slot:actions>
+              <!-- Actions for minor bottleneck -->
+              <div v-if="disciple.bottleneck === 'minor'" class="action-buttons">
+                <button class="action-button bottleneck-action" @click="meditateForInsight">Meditate for Insight</button>
               </div>
-              <button class="action-button bottleneck-action" @click="meditateForInsight">Meditate for Insight</button>
-            </div>
-            
-            <div class="bottleneck-description" v-else>
-              This disciple has encountered a major cultivation bottleneck. They need special treasures to overcome this barrier.
-              <div class="treasure-options">
+              
+              <!-- Actions for major bottleneck -->
+              <div v-if="disciple.bottleneck === 'major'" class="treasure-options">
                 <button 
                   v-for="(count, treasure) in sectTreasures" 
                   :key="treasure" 
@@ -76,11 +64,11 @@
                   {{ formatTreasureName(treasure) }} ({{ count }})
                 </button>
               </div>
-            </div>
-          </div>
+            </template>
+          </bottleneck-visualizer>
           
           <div class="action-buttons">
-            <button class="action-button" @click="navigateToCultivation">Enter Cultivation Chamber</button>
+            <button class="action-button" @click="showCultivationAssignment = true">Assign Cultivation Method</button>
             <button 
               class="action-button" 
               @click="attemptBreakthrough"
@@ -88,6 +76,18 @@
             >
               Attempt Breakthrough
             </button>
+          </div>
+          
+          <!-- Cultivation Assignment Modal -->
+          <div v-if="showCultivationAssignment" class="modal-overlay">
+            <div class="modal-container">
+              <button class="close-button" @click="showCultivationAssignment = false">&times;</button>
+              <cultivation-assignment 
+                :disciple-id="parseInt(id)" 
+                @assigned="handleMethodAssigned" 
+                @cancel="showCultivationAssignment = false"
+              />
+            </div>
           </div>
           <div v-if="actionMessage" class="action-message" :class="{ 'success': actionSuccess, 'error': !actionSuccess }">{{ actionMessage }}</div>
         </div>
@@ -112,9 +112,16 @@
 
 <script>
 import axios from 'axios';
+import BottleneckVisualizer from '@/components/BottleneckVisualizer.vue';
+import CultivationAssignment from '@/components/CultivationAssignment.vue';
+import { EventBus } from '@/services/eventBus.js';
 
 export default {
   name: 'DiscipleDetail',
+  components: {
+    BottleneckVisualizer,
+    CultivationAssignment
+  },
   props: {
     id: {
       type: String,
@@ -126,17 +133,49 @@ export default {
       disciple: {},
       loading: true,
       error: null,
-      actionMessage: null,
+      actionMessage: '',
       actionSuccess: false,
       sectTreasures: {},
+      showCultivationAssignment: false,
       playerSect: {}
-    }
+    };
   },
   mounted() {
     this.fetchDiscipleDetails();
     this.fetchPlayerSect();
+    
+    // Check if we should show the cultivation assignment modal
+    if (this.$route.query.showCultivationAssignment === 'true') {
+      this.showCultivationAssignment = true;
+    }
+    
+    // Listen for turn-ended event
+    EventBus.$on('turn-ended', this.handleTurnEnded);
+  },
+  
+  beforeDestroy() {
+    // Clean up event listener
+    EventBus.$off('turn-ended', this.handleTurnEnded);
   },
   methods: {
+    // Handle turn ended event from EventBus
+    handleTurnEnded(turnData) {
+      console.log('Turn ended event received in DiscipleDetail:', turnData);
+      
+      // Refresh disciple details to reflect changes after turn end
+      this.fetchDiscipleDetails();
+      this.fetchPlayerSect();
+      
+      // Show notification about disciple changes if this disciple was affected
+      if (turnData && turnData.disciple_changes) {
+        const discipleChange = turnData.disciple_changes.find(d => d.id.toString() === this.id);
+        if (discipleChange) {
+          this.actionMessage = `${this.disciple.name} gained ${discipleChange.qi_gained} qi during cultivation.`;
+          this.actionSuccess = true;
+        }
+      }
+    },
+    
     async fetchDiscipleDetails() {
       try {
         const response = await axios.get(`http://localhost:5000/api/disciples/${this.id}`);
@@ -278,6 +317,24 @@ export default {
     
     formatNumber(num) {
       return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    },
+  
+    handleMethodAssigned(assignmentData) {
+      // Close the modal
+      this.showCultivationAssignment = false;
+      
+      // Update the disciple data with the new cultivation method
+      this.disciple.assigned_cultivation_method = assignmentData.method;
+      this.disciple.allocated_resources = assignmentData.resourceAllocation;
+      
+      // Show success message
+      this.actionMessage = `Successfully assigned ${assignmentData.method} cultivation method`;
+      this.actionSuccess = true;
+      
+      // Refresh disciple data to get updated information
+      setTimeout(() => {
+        this.fetchDiscipleDetails();
+      }, 1000);
     }
   }
 }
@@ -573,5 +630,50 @@ export default {
 
 .error {
   color: #a52a2a;
+}
+
+/* Modal styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-container {
+  position: relative;
+  max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.close-button {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(255, 255, 255, 0.7);
+  border: none;
+  border-radius: 50%;
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-button:hover {
+  background: rgba(255, 255, 255, 0.9);
 }
 </style>
